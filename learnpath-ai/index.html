@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LearnPath AI - 智能学习路径规划</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-inner">
+                <div class="logo">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                    </svg>
+                    <span class="logo-text">LearnPath<span class="logo-accent">AI</span></span>
+                </div>
+                <div class="header-subtitle">智能学习路径规划 · B站视频匹配</div>
+                <button id="settingsBtn" class="settings-btn" title="API 配置">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Search Section -->
+            <section class="search-section">
+                <h1 class="search-title">想学什么？告诉我</h1>
+                <p class="search-desc">输入你想学习的主题，AI 将为你规划学习路径并匹配 B站 优质教程</p>
+                <div class="search-box">
+                    <textarea id="queryInput" class="search-input" placeholder="例如：我想学 Python 数据分析，从零基础开始" rows="2"></textarea>
+                    <button id="searchBtn" class="search-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        <span>开始规划</span>
+                    </button>
+                </div>
+                <div class="quick-hints">
+                    <span class="hint-label">试试：</span>
+                    <button class="hint-btn" data-query="零基础学Python编程">零基础学Python编程</button>
+                    <button class="hint-btn" data-query="机器学习入门到实战">机器学习入门到实战</button>
+                    <button class="hint-btn" data-query="前端开发HTML CSS JavaScript">前端开发入门</button>
+                    <button class="hint-btn" data-query="大学物理期末复习">大学物理复习</button>
+                </div>
+            </section>
+
+            <!-- Loading -->
+            <div id="loading" class="loading hidden">
+                <div class="loading-spinner"></div>
+                <div class="loading-text">
+                    <span id="loadingStatus">AI 正在分析你的学习需求...</span>
+                    <span class="loading-dots"></span>
+                </div>
+                <div class="loading-progress">
+                    <div class="loading-bar"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
+                    <div class="loading-steps">
+                        <span id="step1" class="step active">分析需求</span>
+                        <span id="step2" class="step">搜索视频</span>
+                        <span id="step3" class="step">智能匹配</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error -->
+            <div id="error" class="error hidden">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span id="errorMsg"></span>
+                <button id="retryBtn" class="retry-btn">重试</button>
+            </div>
+
+            <!-- Results -->
+            <div id="results" class="results hidden">
+                <!-- Analysis Card -->
+                <div class="analysis-card" id="analysisCard">
+                    <div class="analysis-header">
+                        <div class="analysis-topic" id="analysisTopic"></div>
+                        <div class="analysis-badge" id="analysisBadge"></div>
+                    </div>
+                    <div class="analysis-desc" id="analysisDesc"></div>
+                    <div class="analysis-subtopics" id="analysisSubtopics"></div>
+                    <div class="analysis-keywords" id="analysisKeywords"></div>
+                </div>
+
+                <!-- Roadmap -->
+                <div id="roadmap" class="roadmap hidden"></div>
+
+                <!-- Video Results -->
+                <div class="results-header">
+                    <h2 class="results-title">推荐学习路径</h2>
+                    <div class="results-count" id="resultsCount"></div>
+                </div>
+                <div class="video-list" id="videoList"></div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <span>LearnPath AI · 上海科技大学第二届AI智能创新应用大赛</span>
+        </footer>
+    </div>
+
+    <script>window.onerror=function(m,u,l,c,e){alert("JS ERROR at line "+l+": "+e.message);return true;};</script>
+    <!-- Settings Modal -->
+    <div id="settingsOverlay" class="settings-overlay hidden">
+        <div class="settings-panel">
+            <div class="settings-header">
+                <h3>API 配置</h3>
+                <button id="settingsClose" class="settings-close">&times;</button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-field">
+                    <label>API 地址</label>
+                    <input type="text" id="apiUrl" class="settings-input" placeholder="https://genaiapi.shanghaitech.edu.cn/api/v1/start">
+                </div>
+                <div class="settings-field">
+                    <label>API Key</label>
+                    <input type="password" id="apiKey" class="settings-input" placeholder="输入 API Key">
+                </div>
+                <div class="settings-field">
+                    <label>模型名称</label>
+                    <input type="text" id="apiModel" class="settings-input" placeholder="deepseek-chat">
+                </div>
+            </div>
+            <div class="settings-footer">
+                <button id="settingsSave" class="settings-btn-primary">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsOverlay" class="settings-overlay hidden">
+        <div class="settings-panel">
+            <div class="settings-header">
+                <h3>API 配置</h3>
+                <button id="settingsClose" class="settings-close">&times;</button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-field">
+                    <label>API 地址</label>
+                    <input type="text" id="apiUrl" class="settings-input" placeholder="https://genaiapi.shanghaitech.edu.cn/api/v1/start">
+                </div>
+                <div class="settings-field">
+                    <label>API Key</label>
+                    <input type="password" id="apiKey" class="settings-input" placeholder="输入 API Key">
+                </div>
+                <div class="settings-field">
+                    <label>模型名称</label>
+                    <input type="text" id="apiModel" class="settings-input" placeholder="deepseek-chat">
+                </div>
+            </div>
+            <div class="settings-footer">
+                <button id="settingsSave" class="settings-btn-primary">保存</button>
+            </div>
+        </div>
+    </div>
+<script src="script.js"></script>
+    </body>
+</html>

@@ -1,0 +1,3 @@
+﻿learnpath-ai/__pycache__/
+learnpath-ai/test_result*.json
+learnpath-ai/*.pyc
