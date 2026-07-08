@@ -152,7 +152,7 @@ async function doSearch() {
         const resp = await fetch("/api/search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: query, api_config: apiConfig }),
+            body: JSON.stringify({ query: query, api_config: apiConfig, duration: el("durationSelect").value }),
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || "请求失败");
@@ -193,6 +193,7 @@ function renderResults(data, query) {
     });
 
     renderRoadmap(roadmap, videos);
+    renderStudyPlan(analysis);
 
     resultsCount.textContent = `共找到 ${videos.length} 个视频`;
     videoList.innerHTML = "";
@@ -200,18 +201,18 @@ function renderResults(data, query) {
         videoList.innerHTML = `<div class="empty">暂无匹配视频，请尝试其他关键词</div>`;
     }
     videos.forEach((v, i) => {
-        const card = document.createElement("a");
+        const card = document.createElement("div");
         card.className = "video-card";
-        card.href = v.arcurl || `https://www.bilibili.com/video/${v.bvid}`;
-        card.target = "_blank";
-        card.rel = "noopener noreferrer";
+        card.addEventListener("click", function(e) { showVideoDetail(v, e); });
+        card.setAttribute("data-bvid", v.bvid);
+
         const score = v.ai_score || 5;
         const stars = Math.round(score / 2);
         const starHtml = icons.star.replace('stroke-width="2"', 'fill="#f59e0b" stroke="#f59e0b"');
         const starsStr = Array(stars).fill(starHtml).join("");
         card.innerHTML = `<img class="video-thumb" src="${v.pic || ""}" alt="${v.title}" loading="lazy" onerror="this.src=\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22280%22 height=%22158%22><rect fill=%22%23e8eaee%22 width=%22280%22 height=%22158%22/></svg>\'">
 <div class="video-info">
-<div><span class="video-order">${v.suggested_order || (i + 1)}</span><span class="video-title">${escapeHtml(v.title)}</span></div>
+<div><span class="video-order">${v.suggested_order || (i + 1)}</span><span class="video-title">${escapeHtml(v.title)}</span><a class="video-ext-link" href="${v.arcurl || `https://www.bilibili.com/video/${v.bvid}`}" target="_blank" onclick="event.stopPropagation();" title="在B站打开">↗</a></div>
 <div class="video-meta">
 <span class="video-meta-item">${icons.eye} ${formatNumber(v.play)}</span>
 <span class="video-meta-item">${icons.message} ${formatNumber(v.danmaku)}</span>
@@ -223,11 +224,53 @@ function renderResults(data, query) {
 </div>
 <div class="video-desc">${escapeHtml(v.description || "")}</div>
 ${v.relevance_reason ? `<div class="video-reason">${icons.sparkles} AI推荐：${escapeHtml(v.relevance_reason)}</div>` : ""}
+                ${v.days_estimate ? `<div class="video-meta-item"><span>📅 ${v.days_estimate}天</span></div>` : ""}
+                ${v.suggestion ? `<div class="video-suggestion">💡 ${escapeHtml(v.suggestion)}</div>` : ""}
 </div>`;
         videoList.appendChild(card);
     });
     results.classList.remove("hidden");
     results.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderStudyPlan(analysis) {
+    const container = el("studyPlan") || (function(){
+        const d = document.createElement("div");
+        d.id = "studyPlan";
+        d.className = "study-plan";
+        const ref = el("roadmap");
+        ref.parentNode.insertBefore(d, ref);
+        return d;
+    })();
+    container.innerHTML = "";
+    const dd = (analysis.total_days != null) ? analysis.total_days : analysis.daily_hours;
+    if (dd == null) { container.classList.add("hidden"); return; }
+    container.classList.remove("hidden");
+    const days = (analysis.total_days != null) ? analysis.total_days : "?";
+    const hours = (analysis.daily_hours != null) ? analysis.daily_hours : "?";
+    let html = "<div class=\"study-plan-card\">";
+    html += "<div class=\"study-plan-title\">📅 学习计划安排</div>";
+    html += "<div class=\"study-plan-info\">";
+    html += "<span class=\"plan-tag\">总时长 " + days + " 天</span>";
+    html += "<span class=\"plan-tag\">每天 " + hours + " 小时</span>";
+    html += "</div>";
+    const roadmap = analysis.roadmap || [];
+    if (roadmap.length > 0) {
+        html += "<div class=\"study-plan-steps\">";
+        const avgDays = Math.floor(Number(days) / Math.max(1, roadmap.length));
+            roadmap.forEach(function(step) {
+            const d = step.days || avgDays || "?";
+            html += "<div class=\"study-plan-step\">";
+            html += "<span class=\"plan-step-num\">" + step.step + "</span>";
+            html += "<div class=\"plan-step-body\">";
+            html += "<span class=\"plan-step-title\">" + escapeHtml(step.title) + "</span>";
+            html += "<span class=\"plan-step-time\">建议 " + d + " 天</span>";
+            html += "</div></div>";
+        });
+        html += "</div>";
+    }
+    html += "</div>";
+    container.innerHTML = html;
 }
 
 function renderRoadmap(roadmap, videos) {
@@ -294,9 +337,160 @@ function scrollToVideo(bvid) {
     }
 }
 
+
+let currentDetailVideo = null;
+
+function showVideoDetail(video, event) {
+    if (event) event.stopPropagation();
+    currentDetailVideo = video;
+
+    // Remove selected class from all cards
+    document.querySelectorAll(".video-card").forEach(function(c) {
+        c.classList.remove("video-card-selected");
+    });
+    // Add selected class to clicked card
+    var clicked = document.querySelector('[data-bvid="' + video.bvid + '"]');
+    if (clicked) clicked.classList.add("video-card-selected");
+
+    // Close any existing panel first (unwrap previous selection)
+    var oldWrapper = document.querySelector(".flex-row-wrapper");
+    if (oldWrapper) {
+        var oldCard = oldWrapper.querySelector(".video-card");
+        if (oldCard) {
+            oldCard.classList.remove("video-card-selected");
+            oldWrapper.parentNode.insertBefore(oldCard, oldWrapper);
+        }
+        var oldPanel = document.getElementById("videoDetailPanel");
+        if (oldPanel) {
+            oldPanel.classList.remove("video-detail-panel-open");
+            oldPanel.classList.add("hidden");
+            document.getElementById("results").appendChild(oldPanel);
+        }
+        oldWrapper.parentNode.removeChild(oldWrapper);
+    }
+
+    // Create detail panel if not exists
+    var panel = document.getElementById("videoDetailPanel");
+    if (!panel) {
+        panel = document.createElement("div");
+        panel.id = "videoDetailPanel";
+        panel.className = "video-detail-panel hidden";
+    }
+
+    // Insert panel right after the clicked card, wrap both in a flex row
+    var clicked = document.querySelector('[data-bvid="' + video.bvid + '"]');
+    if (clicked) {
+        clicked.classList.add("video-card-selected");
+        var wrapper = document.createElement("div");
+        wrapper.className = "flex-row-wrapper";
+        clicked.parentNode.insertBefore(wrapper, clicked);
+        wrapper.appendChild(clicked);
+        wrapper.appendChild(panel);
+    }
+
+    // Show loading
+    panel.innerHTML = "<div class=\"detail-loading\">AI 正在分析该视频...</div>";
+    panel.classList.remove("hidden");
+    panel.classList.add("video-detail-panel-open");
+
+    // Scroll to make the wrapper (and panel) visible
+    setTimeout(function() {
+        wrapper.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 50);
+
+    // Fetch detail
+    fetch("/api/video-detail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: lastQuery || "", video: video }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var intro = data.introduction || "暂无分析";
+        var plan = data.study_plan || {};
+        var days = (plan.total_days != null) ? plan.total_days : "?";
+        var hours = (plan.daily_hours != null) ? plan.daily_hours : "?";
+        var schedule = plan.schedule || [];
+        var comparison = data.comparison || "";
+
+        var html = "<div class=\"detail-header\">";
+        html += "<div class=\"detail-video-title\">" + escapeHtml(video.title.substring(0, 60)) + "</div>";
+        html += "<button class=\"detail-close\" onclick=\"closeVideoDetail()\">&times;</button>";
+        html += "</div><div class=\"detail-body\">";
+
+        // Introduction
+        html += "<div class=\"detail-section\">";
+        html += "<div class=\"detail-section-title\">📖 AI 评价</div>";
+        html += "<div class=\"detail-text\">" + escapeHtml(intro) + "</div>";
+        html += "</div>";
+
+        // Study plan
+        html += "<div class=\"detail-section\">";
+        html += "<div class=\"detail-section-title\">📅 学习安排</div>";
+        html += "<div class=\"detail-plan-tags\">";
+        html += "<span class=\"plan-tag\">总 " + days + " 天</span>";
+        html += "<span class=\"plan-tag\">每天 " + hours + " 小时</span>";
+        html += "</div>";
+
+        if (schedule.length > 0) {
+            html += "<div class=\"detail-schedule\">";
+            schedule.forEach(function(s) {
+                html += "<div class=\"schedule-item\">";
+                html += "<div class=\"schedule-day\">第" + s.day + "天</div>";
+                html += "<div class=\"schedule-content\">";
+                html += "<div class=\"schedule-topic\">" + escapeHtml(s.topic || "") + "</div>";
+                html += "<div class=\"schedule-desc\">" + escapeHtml(s.content || "") + "</div>";
+                html += "</div></div>";
+            });
+            html += "</div>";
+        }
+        html += "</div>";
+
+        // Comparison
+        if (comparison) {
+            html += "<div class=\"detail-section\">";
+            html += "<div class=\"detail-section-title\">🔄 对比分析</div>";
+            html += "<div class=\"detail-text\">" + escapeHtml(comparison) + "</div>";
+            html += "</div>";
+        }
+
+        html += "</div>"; // close detail-body
+        panel.innerHTML = html;
+    })
+    .catch(function(err) {
+        panel.innerHTML = "<div class=\"detail-loading\">分析失败：" + err.message + "</div>";
+    });
+}
+
+function closeVideoDetail() {
+    var panel = document.getElementById("videoDetailPanel");
+    if (panel) {
+        panel.classList.remove("video-detail-panel-open");
+        panel.classList.add("hidden");
+    }
+    // Unwrap: move selected card back, save panel
+    var wrapper = document.querySelector(".flex-row-wrapper");
+    if (wrapper) {
+        var selected = wrapper.querySelector(".video-card");
+        if (selected) {
+            selected.classList.remove("video-card-selected");
+            wrapper.parentNode.insertBefore(selected, wrapper);
+        }
+        if (panel) {
+            document.getElementById("results").appendChild(panel);
+        }
+        wrapper.parentNode.removeChild(wrapper);
+    }
+    document.querySelectorAll(".video-card-selected").forEach(function(c) {
+        c.classList.remove("video-card-selected");
+    });
+}
+
+
 function escapeHtml(str) {
     if (!str) return "";
     const div = document.createElement("div");
     div.textContent = str;
     return div.innerHTML;
 }
+

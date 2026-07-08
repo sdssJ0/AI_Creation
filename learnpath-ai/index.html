@@ -20,9 +20,7 @@
                 </div>
                 <div class="header-subtitle">智能学习路径规划 · B站视频匹配</div>
                 <button id="settingsBtn" class="settings-btn" title="API 配置">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-                    </svg>
+                    ⚙
                 </button>
             </div>
         </header>
@@ -35,6 +33,16 @@
                 <p class="search-desc">输入你想学习的主题，AI 将为你规划学习路径并匹配 B站 优质教程</p>
                 <div class="search-box">
                     <textarea id="queryInput" class="search-input" placeholder="例如：我想学 Python 数据分析，从零基础开始" rows="2"></textarea>
+                    <div class="duration-wrap">
+                        <label class="duration-label">学习时长</label>
+                        <select id="durationSelect" class="duration-select">
+                            <option value="3">3天</option>
+                            <option value="7" selected>一周</option>
+                            <option value="14">两周</option>
+                            <option value="30">一个月</option>
+                            <option value="90">三个月</option>
+                        </select>
+                    </div>
                     <button id="searchBtn" class="search-btn">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
@@ -134,32 +142,7 @@
         </div>
     </div>
 
-    <!-- Settings Modal -->
-    <div id="settingsOverlay" class="settings-overlay hidden">
-        <div class="settings-panel">
-            <div class="settings-header">
-                <h3>API 配置</h3>
-                <button id="settingsClose" class="settings-close">&times;</button>
-            </div>
-            <div class="settings-body">
-                <div class="settings-field">
-                    <label>API 地址</label>
-                    <input type="text" id="apiUrl" class="settings-input" placeholder="https://genaiapi.shanghaitech.edu.cn/api/v1/start">
-                </div>
-                <div class="settings-field">
-                    <label>API Key</label>
-                    <input type="password" id="apiKey" class="settings-input" placeholder="输入 API Key">
-                </div>
-                <div class="settings-field">
-                    <label>模型名称</label>
-                    <input type="text" id="apiModel" class="settings-input" placeholder="deepseek-chat">
-                </div>
-            </div>
-            <div class="settings-footer">
-                <button id="settingsSave" class="settings-btn-primary">保存</button>
-            </div>
-        </div>
-    </div>
-<script src="script.js"></script>
+    <script src="script.js"></script>
     </body>
 </html>
+

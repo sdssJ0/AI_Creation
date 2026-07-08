@@ -86,15 +86,17 @@ def call_deepseek(messages, max_tokens=2000, temperature=0.7):
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
         result = json.loads(resp.read().decode("utf-8"))
+    if "choices" not in result:
+        raise Exception("AI API error: " + str(result.get("message", "unknown")))
     return result["choices"][0]["message"]["content"]
 
 
-def analyze_learning_goal(query):
+def analyze_learning_goal(query, duration="30"):
     prompt = (
         "用户想学习：" + query + "\n\n"
         + "请分析学习目标，返回JSON（只返回JSON）：\n"
         + '{"topic":"学习主题","keywords":["k1","k2","k3"],"difficulty":"beginner","description":"一句话","subtopics":["s1","s2"],"roadmap":[{"step":1,"title":"第一步","description":"说明"}]}\n\n'
-        + "要求：keywords填3个B站搜索关键词，如果是大学课程（如大学物理、高数）必须包含'大学'等限定词避免搜到高中内容。difficulty只能是beginner/intermediate/advanced。roadmap 3-5个步骤"
+        + "要求：keywords填3个B站搜索关键词，大学课程必须含'大学'限定词。difficulty:beginner/intermediate/advanced。roadmap 3-5步含days字段。JSON顶层加total_days和daily_hours。学习时长" + duration + "天"
     )
     return call_deepseek([
         {"role": "system", "content": "只输出JSON，不要其他文字"},
@@ -102,21 +104,38 @@ def analyze_learning_goal(query):
     ], max_tokens=800)
 
 
-def rank_videos(videos, query):
+def rank_videos(videos, query, duration="30"):
     items = []
     for i, v in enumerate(videos):
         items.append("[" + str(i) + "]" + v.get("title","")[:50] + "|" + v.get("author","") + "|播放:" + str(v.get("play",0)))
     P = (
-        "用户想学：" + query + "\n\n视频：\n" + "\n".join(items) + "\n\n"
+        "用户想学：" + query + "\n学习时长" + str(duration) + "天\n\n视频：\n" + "\n".join(items) + "\n\n"
         + "返回JSON数组：\n"
-        + '[{"index":0,"score":9,"relevance_reason":"理由10字","suggested_order":1,"roadmap_step":1}]\n\n'
-        + "score 1-10分，roadmap_step对应学习步骤编号"
+        + '[{"index":0,"score":9,"relevance_reason":"理由","suggested_order":1,"roadmap_step":1,"days_estimate":3,"suggestion":"建议15字"}]\n\n'
+        + "score 1-10分，roadmap_step对应步骤编号，days_estimate建议天数，suggestion学习建议15字内"
     )
     return call_deepseek([
         {"role": "system", "content": "只输出JSON数组"},
         {"role": "user", "content": P},
-    ], max_tokens=1500)
+    ], max_tokens=2000)
 
+
+
+
+def generate_video_detail(query, video):
+    items = []
+    items.append("标题：" + video.get("title", ""))
+    items.append("作者：" + video.get("author", ""))
+    items.append("简介：" + (video.get("description", "") or "")[:100])
+    items.append("时长：" + str(video.get("duration", "")))
+    info = chr(10).join(items)
+    prompt = ("用户学：" + query + chr(10) + chr(10) + "分析此B站视频：" + chr(10) + info
+        + chr(10) + chr(10) + "返回JSON（只返回JSON）："
+        + '{"introduction":"视频评价80字","study_plan":{"total_days":3,"daily_hours":2,"schedule":[{"day":1,"topic":"主题","content":"学什么"}]},"comparison":"对比分析40字"}')
+    return call_deepseek([
+        {"role": "system", "content": "只输出JSON"},
+        {"role": "user", "content": prompt},
+    ], max_tokens=2000)
 
 class LearnPathHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -140,6 +159,8 @@ class LearnPathHandler(BaseHTTPRequestHandler):
             p = urlparse(self.path)
             if p.path == "/api/search":
                 self._search()
+            elif p.path == "/api/video-detail":
+                self._video_detail()
             else:
                 self._json(404, {"error":"Not found"})
         except Exception as e:
@@ -155,6 +176,7 @@ class LearnPathHandler(BaseHTTPRequestHandler):
             self._json(400, {"error":"Invalid"})
             return
         q = body.get("query","").strip()
+        duration = str(body.get("duration", "30"))
         if not q:
             self._json(400, {"error":"请输入"})
             return
@@ -162,22 +184,22 @@ class LearnPathHandler(BaseHTTPRequestHandler):
         # Accept custom API config from frontend
         cfg = body.get("api_config", {})
         if cfg:
+            global DEEPSEEK_KEY, DEEPSEEK_URL, DEEPSEEK_MODEL
             if cfg.get("api_key"):
-                import server as _s
-                _s.DEEPSEEK_KEY = cfg["api_key"]
+                DEEPSEEK_KEY = cfg["api_key"]
             if cfg.get("api_url"):
-                _s.DEEPSEEK_URL = cfg["api_url"]
+                DEEPSEEK_URL = cfg["api_url"]
             if cfg.get("api_model"):
-                _s.DEEPSEEK_MODEL = cfg["api_model"]
+                DEEPSEEK_MODEL = cfg["api_model"]
 
 
         # Step 1: Analyze
         try:
-            ar = analyze_learning_goal(q)
+            ar = analyze_learning_goal(q, duration)
             analysis = json.loads(ar)
         except Exception as e:
             print("[Error] AI:", e)
-            analysis = {"topic":q,"keywords":[q],"difficulty":"beginner","description":"","subtopics":[],"roadmap":[]}
+            analysis = {"topic":q,"keywords":[q],"difficulty":"beginner","description":"","subtopics":[],"roadmap":[],"total_days":int(duration),"daily_hours":max(1,int(duration)//10)}
         keywords = analysis.get("keywords",[q])[:3]
         if q not in keywords:
             keywords.insert(0, q)
@@ -204,7 +226,7 @@ class LearnPathHandler(BaseHTTPRequestHandler):
         # Step 3: Ranking
         if uniq:
             try:
-                rr = rank_videos(uniq, q)
+                rr = rank_videos(uniq, q, duration)
                 ranking = json.loads(rr)
                 sm = {}
                 for item in ranking:
@@ -215,6 +237,8 @@ class LearnPathHandler(BaseHTTPRequestHandler):
                     v["relevance_reason"] = info.get("relevance_reason", "")
                     v["suggested_order"] = info.get("suggested_order", 99)
                     v["roadmap_step"] = info.get("roadmap_step", 0)
+                    v["days_estimate"] = info.get("days_estimate", 0)
+                    v["suggestion"] = info.get("suggestion", "")
                 uniq.sort(key=lambda x: (x.get("suggested_order",99), -x.get("ai_score",0)))
                 for i, v in enumerate(uniq):
                     v["suggested_order"] = i + 1
@@ -225,9 +249,32 @@ class LearnPathHandler(BaseHTTPRequestHandler):
                     v["relevance_reason"] = ""
                     v["suggested_order"] = i+1
                     v["roadmap_step"] = 0
+                    v["days_estimate"] = 0
+                    v["suggestion"] = ""
 
         roadmap = analysis.get("roadmap", [])
         self._json(200, {"analysis":analysis, "videos":uniq, "roadmap":roadmap})
+
+
+    def _video_detail(self):
+        try:
+            cl = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(cl).decode("utf-8"))
+        except:
+            self._json(400, {"error":"Invalid"})
+            return
+        q = body.get("query", "")
+        v = body.get("video", {})
+        if not q or not v.get("bvid"):
+            self._json(400, {"error":"Missing params"})
+            return
+        try:
+            detail = generate_video_detail(q, v)
+            parsed = json.loads(detail)
+            self._json(200, parsed)
+        except Exception as e:
+            print("[Error] Video detail:", e)
+            self._json(200, {"introduction":"AI 分析服务暂时不可用，请稍后重试","study_plan":{"total_days":0,"daily_hours":0,"schedule":[]},"comparison":""})
 
     def _json(self, status, data):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -254,3 +301,4 @@ def run_server(port=8000):
 
 if __name__ == "__main__":
     run_server(int(sys.argv[1]) if len(sys.argv) > 1 else 8000)
+
